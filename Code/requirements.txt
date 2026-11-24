@@ -1,0 +1,12 @@
+numpy
+matplotlib
+scikit-learn
+jupyter
+pytest
+seaborn
+pandas
+nbstripout
+nbdime
+jax
+torch
+xgboost
