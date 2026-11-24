@@ -4,6 +4,8 @@
 # Skeleton: function names and docstrings suggested by an LLM (Claude, November
 # 2026); the function bodies are to be written by the group.
 
+import hashlib  # digital fingerprint 
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -28,41 +30,97 @@ N_SAMPLES = {"train": 34561, "val": 6491, "test": 17778}
 # OrganAMNIST
 # --------------------------------------------------------------------------
 
-def download_organamnist(data_dir=DATA_DIR):
+def _md5(path):
     """
-    Make sure organamnist.npz is in data_dir, and return its path.
+    Calculate the fingerprint for the file using the MD5 hash algorithm
 
-    Suggestions:
-    - If the file is missing: download it from URL, or raise an error telling
-      the user to download it manually and put it in Code/data/.
-    - Optionally check the file against MD5, so a broken download is caught.
+    LLM-assisted
+        ------------
+        Tool: Claude (Claude Opus 5.5, claude.ai, November 2026)
+        Role: Wrote the loop with the bitwise left shift to save memory when calculating checksum. 
     """
-    raise NotImplementedError
+    h = hashlib.md5()   # empty hash object 
+    with open(path, "rb") as f:     #open file binary-read 
+        for chunk in iter(lambda: f.read(1 << 20), b""): # Bitwise read until sentinel value is found (b)
+            h.update(chunk) # update the hash 
+    return h.hexdigest() # Return final hash as hexadecimal sum. 
+
+def download_organamnist():
+    """
+    Download organamnist.npz (about 38 MB) from Zenodo to Code/data/ if it is
+    not there already, and check its MD5 checksum.
+
+    LLM-assisted
+            ------------
+            Tool: Claude (Claude Opus 5.5, claude.ai, November 2026)
+            Role: Edited the code block to include the check is the dataset is present. 
+                  Gave instructions on how to use urllib. 
+    """
+    data_dir = DATA_DIR
+    path = data_dir / FILENAME                          # construct file path 
+    if not path.exists():                               # Check if the file exists
+        data_dir.mkdir(parents=True, exist_ok=True)     # only if dataset is not present 
+        print(f"Downloading {FILENAME} to {data_dir} ...")
+        urllib.request.urlretrieve(URL, path)           # the download 
+    if _md5(path) != MD5:                               # compare checksum to the expected checksum 
+        raise RuntimeError(f"{path} has the wrong checksum. Delete it and download again from {URL}")
+    return path                                         # return file path 
 
 
-def load_train_val(flatten=True, scale=True, data_dir=DATA_DIR):
+
+def load_train_val(flatten=True, scale=True):
     """
     Training and validation data, for all tuning and model selection.
+    Returns X_train, y_train, X_val, y_val.
 
-    Should return X_train, y_train, X_val, y_val, where
-    - X has shape (n, 784) if flatten=True (FFNN, logistic regression, trees),
-      or (n, 28, 28) if flatten=False (CNN);
-    - pixel values are divided by 255 if scale=True;
-    - y is a 1D array of integer labels 0-10 (stored as shape (n, 1) in the file).
-
-    Keys in the npz file: train_images, train_labels, val_images, val_labels.
+    flatten=True  -> X has shape (n, 784): FFNN, logistic regression, trees.
+    flatten=False -> X has shape (n, 28, 28): CNN.
+    scale=True    -> pixel values divided by 255.
     """
-    raise NotImplementedError
+    path = download_organamnist()
+
+    with np.load(path) as data:
+        X_train = data["train_images"]
+        y_train = data["train_labels"].ravel()
+
+        X_val = data["val_images"]
+        y_val = data["val_labels"].ravel()
+
+    X_train = X_train.astype(np.float64)
+    X_val = X_val.astype(np.float64)
+
+    if scale:
+        X_train = X_train / 255.0
+        X_val = X_val / 255.0
+
+    if flatten:
+        X_train = X_train.reshape(len(X_train), -1)
+        X_val = X_val.reshape(len(X_val), -1)
+
+    return X_train, y_train.astype(int), X_val, y_val.astype(int)
 
 
-def load_test(flatten=True, scale=True, data_dir=DATA_DIR):
+def load_test(flatten=True, scale=True):
     """
-    Test data. Use ONCE per method, in its final evaluation cell only.
-
-    Should return X_test, y_test, in the same format as load_train_val.
-    Keys in the npz file: test_images, test_labels.
+    Load test data for final model evaluation.
+    Returns X_test, y_test.
+    Same shapes as load_train_val for flatten and scale. 
     """
-    raise NotImplementedError
+    path = download_organamnist()
+
+    with np.load(path) as data:
+        X_test = data["test_images"]
+        y_test = data["test_labels"].ravel()
+
+    X_test = X_test.astype(np.float64)
+
+    if scale:
+        X_test = X_test / 255.0
+
+    if flatten:
+        X_test = X_test.reshape(len(X_test), -1)
+
+    return X_test, y_test.astype(int)
 
 
 def class_counts(y):
